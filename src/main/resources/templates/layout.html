@@ -5,9 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{#insert title}Vacation Approval{/insert}</title>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 640px; margin: 4rem auto; padding: 0 1rem; color: #1a1a1a; }
+        body { font-family: system-ui, sans-serif; max-width: 720px; margin: 3rem auto; padding: 0 1rem; color: #1a1a1a; }
         h1 { margin-bottom: 0.25rem; }
+        h2 { margin-top: 2.5rem; border-bottom: 1px solid #ddd; padding-bottom: 0.25rem; }
         p.subtitle { color: #666; }
+        form.request-form { display: grid; gap: 0.75rem; max-width: 480px; }
+        form.request-form label { font-weight: 600; font-size: 0.9rem; }
+        form.request-form input, form.request-form textarea { padding: 0.4rem; font: inherit; }
+        form.request-form button { justify-self: start; padding: 0.5rem 1.25rem; cursor: pointer; }
+        .card { border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; }
+        .card h3 { margin: 0 0 0.25rem 0; }
+        .meta { color: #666; font-size: 0.9rem; margin: 0 0 0.5rem 0; }
+        .ai-summary { background: #f6f6f6; border-radius: 4px; padding: 0.6rem 0.8rem; font-size: 0.9rem; }
+        .decision-form { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; }
+        .decision-form input[type=text] { flex: 1; padding: 0.4rem; }
+        .decision-form button { padding: 0.4rem 0.9rem; cursor: pointer; }
+        .approve { background: #1a7f37; color: white; border: none; border-radius: 4px; }
+        .reject { background: #b3261e; color: white; border: none; border-radius: 4px; }
+        .empty { color: #888; font-style: italic; }
+        .approved { color: #1a7f37; font-weight: 600; }
+        .rejected { color: #b3261e; font-weight: 600; }
     </style>
 </head>
 <body>
