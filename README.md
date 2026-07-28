@@ -4,6 +4,8 @@ Baseline project for a live-coding session building a vacation approval system w
 [LangChain4j](https://docs.langchain4j.dev/), [Temporal](https://temporal.io/), and
 [Quarkus](https://quarkus.io/) + [Qute](https://quarkus.io/guides/qute).
 
+[![Watch the live session on YouTube](https://img.youtube.com/vi/saM_XnON5cA/maxresdefault.jpg)](https://youtube.com/live/saM_XnON5cA)
+
 The infrastructure here already works: Docker Compose brings up a Temporal server, its
 Postgres persistence store, the Temporal Web UI, and a GPU-accelerated Ollama instance for
 LangChain4j. The Quarkus app boots, connects to Temporal, and renders a placeholder page —
