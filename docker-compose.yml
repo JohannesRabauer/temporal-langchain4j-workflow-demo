@@ -62,6 +62,8 @@ services:
   ollama:
     container_name: ollama
     image: ollama/ollama:0.15.0
+    environment:
+      - OLLAMA_NUM_PARALLEL=1
     networks:
       - temporal-network
     ports:

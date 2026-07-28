@@ -24,43 +24,29 @@
         <button type="submit">Submit request</button>
     </form>
 
-    <h2>Pending approval</h2>
-    {#if pending.isEmpty}
-        <p class="empty">No requests waiting for a decision.</p>
-    {#else}
-        {#for item in pending}
-            <div class="card">
-                <h3>{item.request.employeeName}</h3>
-                <p class="meta">{item.request.startDate} &rarr; {item.request.endDate}</p>
-                <p>{item.request.reason}</p>
-                {#if item.aiSummary}
-                    <p class="ai-summary">🤖 {item.aiSummary}</p>
-                {#else}
-                    <p class="ai-summary empty">AI review in progress&hellip;</p>
-                {/if}
-                <form class="decision-form" method="post" action="/vacations/{item.workflowId}/decide">
-                    <input type="text" name="comment" placeholder="Comment (optional)">
-                    <button class="approve" type="submit" name="approved" value="true">Approve</button>
-                    <button class="reject" type="submit" name="approved" value="false">Reject</button>
-                </form>
-            </div>
-        {/for}
-    {/if}
+    <div id="vacation-lists">
+        {#include vacationLists /}
+    </div>
 
-    <h2>Decided</h2>
-    {#if decided.isEmpty}
-        <p class="empty">No decisions yet.</p>
-    {#else}
-        {#for item in decided}
-            <div class="card">
-                <h3>{item.request.employeeName}
-                    {#if item.decision.approved}<span class="approved">Approved</span>{#else}<span class="rejected">Rejected</span>{/if}
-                </h3>
-                <p class="meta">{item.request.startDate} &rarr; {item.request.endDate}</p>
-                <p>{item.request.reason}</p>
-                <p class="ai-summary">🤖 {item.decision.aiSummary}</p>
-                {#if item.decision.comment}<p><strong>Manager comment:</strong> {item.decision.comment}</p>{/if}
-            </div>
-        {/for}
-    {/if}
+    <script>
+        (function () {
+            const container = document.getElementById('vacation-lists');
+
+            async function refresh() {
+                if (container.contains(document.activeElement)) {
+                    return; // don't clobber a comment the manager is currently typing
+                }
+                try {
+                    const response = await fetch('/vacations/fragment');
+                    if (response.ok) {
+                        container.innerHTML = await response.text();
+                    }
+                } catch (e) {
+                    // transient network hiccup, just try again on the next tick
+                }
+            }
+
+            setInterval(refresh, 3000);
+        })();
+    </script>
 {/include}

@@ -37,6 +37,9 @@ public class VacationResource {
     Template index;
 
     @Inject
+    Template vacationLists;
+
+    @Inject
     WorkflowClient workflowClient;
 
     @ConfigProperty(name = "quarkus.temporal.worker.task-queue")
@@ -45,6 +48,19 @@ public class VacationResource {
     @GET
     @Produces(MediaType.TEXT_HTML)
     public TemplateInstance index() {
+        Lists lists = loadLists();
+        return index.data("pending", lists.pending()).data("decided", lists.decided());
+    }
+
+    @GET
+    @Path("/vacations/fragment")
+    @Produces(MediaType.TEXT_HTML)
+    public TemplateInstance fragment() {
+        Lists lists = loadLists();
+        return vacationLists.data("pending", lists.pending()).data("decided", lists.decided());
+    }
+
+    private Lists loadLists() {
         List<PendingVacationView> pending = new ArrayList<>();
         List<DecidedVacationView> decided = new ArrayList<>();
 
@@ -69,7 +85,10 @@ public class VacationResource {
         pending.sort(Comparator.comparing(PendingVacationView::startTime).reversed());
         decided.sort(Comparator.comparing(DecidedVacationView::startTime).reversed());
 
-        return index.data("pending", pending).data("decided", decided);
+        return new Lists(pending, decided);
+    }
+
+    private record Lists(List<PendingVacationView> pending, List<DecidedVacationView> decided) {
     }
 
     @POST
