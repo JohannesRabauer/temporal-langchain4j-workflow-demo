@@ -1,0 +1,14 @@
+*
+!pom.xml
+!mvnw
+!mvnw.cmd
+!.mvn
+!.mvn/**
+!src
+!src/**
+
+target
+.git
+.idea
+.quarkus
+*.md
