@@ -40,12 +40,18 @@ This builds the Quarkus app image (compiling it from source inside the build sta
 local Maven run required) and starts the full stack: Temporal, Postgres, Temporal UI,
 Ollama, and the app itself.
 
-One-time step after the first `up`: pull the model Ollama will serve (a multi-GB download —
+One-time step after the first `up`: pull the model Ollama will serve (~2GB download —
 do this **before** going live, not on stream):
 
 ```bash
-docker exec ollama ollama pull llama3.1
+docker exec ollama ollama pull llama3.2:3b
 ```
+
+`llama3.2:3b` was picked over the larger `llama3.1` (8B) specifically because it fits
+entirely in a modest GPU's VRAM — an 8B model that only partially offloads to the GPU spills
+the rest onto the CPU/RAM and can make the whole machine feel sluggish while it's warming up
+or answering. If you have a beefier GPU, a larger model works too; just update
+`quarkus.langchain4j.ollama.chat-model.model-name` in `application.properties` to match.
 
 URLs:
 
