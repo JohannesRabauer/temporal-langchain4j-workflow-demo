@@ -86,8 +86,10 @@ public class VacationResource {
                         }
                     } catch (Exception e) {
                         // A workflow left over from a previous workflow-code version may no longer
-                        // be replayable; skip it rather than breaking the whole list.
-                        LOG.warnf(e, "Skipping workflow %s while loading the vacation lists", workflowId);
+                        // be replayable; skip it rather than breaking the whole list. No stack
+                        // trace: this happens on every list load for the same stale executions,
+                        // and the cause is always the same replay mismatch.
+                        LOG.warnf("Skipping workflow %s while loading the vacation lists: %s", workflowId, e);
                     }
                 });
 

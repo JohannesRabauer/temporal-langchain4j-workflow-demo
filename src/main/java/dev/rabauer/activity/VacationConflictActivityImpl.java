@@ -60,7 +60,9 @@ public class VacationConflictActivityImpl implements VacationConflictActivity {
             } catch (Exception e) {
                 // One unreadable execution (e.g. left over from a previous workflow-code version
                 // and no longer replayable) must not block the conflict check for everyone else.
-                LOG.warnf(e, "Skipping workflow %s while checking for conflicts", workflowId);
+                // No stack trace: this runs on every submission for the same stale executions,
+                // and the cause is always the same replay mismatch.
+                LOG.warnf("Skipping workflow %s while checking for conflicts: %s", workflowId, e);
             }
         });
 
