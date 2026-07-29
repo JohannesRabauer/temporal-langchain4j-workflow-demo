@@ -1,24 +1,25 @@
 # LangChain4j Meets Temporal — Vacation Approval Demo
 
-Baseline project for a live-coding session building a vacation approval system with
+Reference implementation for a live-coding session building a vacation approval system with
 [LangChain4j](https://docs.langchain4j.dev/), [Temporal](https://temporal.io/), and
 [Quarkus](https://quarkus.io/) + [Qute](https://quarkus.io/guides/qute).
 
 [![Watch the live session on YouTube](https://img.youtube.com/vi/saM_XnON5cA/maxresdefault.jpg)](https://youtube.com/live/saM_XnON5cA)
 
-The infrastructure here already works: Docker Compose brings up a Temporal server, its
-Postgres persistence store, the Temporal Web UI, and a GPU-accelerated Ollama instance for
-LangChain4j. The Quarkus app boots, connects to Temporal, and renders a placeholder page —
-but the actual workflow, activities, and AI reasoning are intentionally left empty. That's
-what we build live.
+Docker Compose brings up a Temporal server, its Postgres persistence store, the Temporal Web
+UI, and a GPU-accelerated Ollama instance for LangChain4j. The Quarkus app connects to all of
+it and runs a full `VacationApprovalWorkflow`:
 
-## What we'll build live
-
-- A Temporal workflow that models a vacation request from submission to decision
-- A LangChain4j-backed activity that has the AI assess/summarize the request
-- A human-in-the-loop approval step using a Temporal **Signal**
-- A demonstration of crash recovery: restart the app mid-workflow and watch it resume
-  exactly where it left off
+- A deterministic **conflict-check activity** scans other pending/approved requests for
+  overlapping dates before anything else runs, so the AI step reasons about real data instead
+  of guessing.
+- A LangChain4j-backed **advisor activity** summarizes the request and recommends
+  approve/deny, grounded in those conflicts.
+- The workflow then waits for a manager's decision via a Temporal **Signal**.
+- Once decided, a second LangChain4j-backed **notification activity** drafts a short message
+  to the employee explaining the outcome.
+- Restarting the app mid-workflow (`docker compose restart app`) demonstrates that Temporal
+  resumes exactly where it left off, with no state lost.
 
 ## Prerequisites
 
@@ -59,8 +60,8 @@ URLs:
 - Temporal Web UI: <http://localhost:8080>
 - Ollama API: <http://localhost:11434>
 
-To demonstrate workflow recovery once the real workflow exists, restart just the app
-container and watch Temporal resume it:
+To demonstrate workflow recovery, restart just the app container and watch Temporal resume
+whichever workflows were mid-flight:
 
 ```bash
 docker compose restart app
@@ -90,7 +91,10 @@ per-token cost while streaming. To use OpenAI instead, swap the
 
 ## Project layout
 
-- `workflow/` — Temporal workflow interfaces and implementations (empty — built live)
-- `activity/` — Temporal activities invoked by the workflow (empty — built live)
-- `ai/` — LangChain4j AI services (empty — built live)
-- `web/` — REST resources and Qute-rendered pages
+- `workflow/` — `VacationApprovalWorkflow`: conflict check → AI summary → wait for signal →
+  AI notification
+- `activity/` — `VacationConflictActivity` (deterministic), `VacationAiActivity` and
+  `VacationNotificationActivity` (LangChain4j-backed)
+- `ai/` — the two LangChain4j AI services: `VacationAdvisor` (manager-facing recommendation)
+  and `VacationNotifier` (employee-facing message)
+- `web/` — REST resources and Qute-rendered pages, including the auto-refreshing pending/decided lists

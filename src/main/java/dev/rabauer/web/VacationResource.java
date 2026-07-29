@@ -21,6 +21,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.RestForm;
 
 import java.net.URI;
@@ -32,6 +33,8 @@ import java.util.UUID;
 
 @Path("/")
 public class VacationResource {
+
+    private static final Logger LOG = Logger.getLogger(VacationResource.class);
 
     @Inject
     Template index;
@@ -67,18 +70,24 @@ public class VacationResource {
         workflowClient.listExecutions("WorkflowType='VacationApprovalWorkflow'")
                 .forEach(execution -> {
                     String workflowId = execution.getExecution().getWorkflowId();
-                    if (execution.getStatus() == WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_RUNNING) {
-                        VacationApprovalWorkflow stub = workflowClient.newWorkflowStub(VacationApprovalWorkflow.class, workflowId);
-                        VacationSnapshot snapshot = stub.getSnapshot();
-                        if (snapshot.request() != null) {
-                            pending.add(new PendingVacationView(workflowId, snapshot.request(), snapshot.aiSummary(), execution.getStartTime()));
+                    try {
+                        if (execution.getStatus() == WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_RUNNING) {
+                            VacationApprovalWorkflow stub = workflowClient.newWorkflowStub(VacationApprovalWorkflow.class, workflowId);
+                            VacationSnapshot snapshot = stub.getSnapshot();
+                            if (snapshot.request() != null) {
+                                pending.add(new PendingVacationView(workflowId, snapshot.request(), snapshot.conflicts(), snapshot.aiSummary(), execution.getStartTime()));
+                            }
+                        } else if (execution.getStatus() == WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_COMPLETED) {
+                            WorkflowStub untyped = workflowClient.newUntypedWorkflowStub(workflowId);
+                            VacationDecision decision = untyped.getResult(VacationDecision.class);
+                            VacationApprovalWorkflow stub = workflowClient.newWorkflowStub(VacationApprovalWorkflow.class, workflowId);
+                            VacationSnapshot snapshot = stub.getSnapshot();
+                            decided.add(new DecidedVacationView(workflowId, snapshot.request(), decision, execution.getStartTime()));
                         }
-                    } else if (execution.getStatus() == WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_COMPLETED) {
-                        WorkflowStub untyped = workflowClient.newUntypedWorkflowStub(workflowId);
-                        VacationDecision decision = untyped.getResult(VacationDecision.class);
-                        VacationApprovalWorkflow stub = workflowClient.newWorkflowStub(VacationApprovalWorkflow.class, workflowId);
-                        VacationSnapshot snapshot = stub.getSnapshot();
-                        decided.add(new DecidedVacationView(workflowId, snapshot.request(), decision, execution.getStartTime()));
+                    } catch (Exception e) {
+                        // A workflow left over from a previous workflow-code version may no longer
+                        // be replayable; skip it rather than breaking the whole list.
+                        LOG.warnf(e, "Skipping workflow %s while loading the vacation lists", workflowId);
                     }
                 });
 

@@ -69,8 +69,11 @@ class VacationApprovalEndToEndTest {
                 .then().statusCode(303);
 
         WorkflowStub untyped = workflowClient.newUntypedWorkflowStub(workflowId);
-        VacationDecision decision = untyped.getResult(15, TimeUnit.SECONDS, VacationDecision.class);
+        // Longer than the pre-decision wait above: the workflow now runs a second real AI call
+        // (drafting the employee notification) after the signal before it completes.
+        VacationDecision decision = untyped.getResult(90, TimeUnit.SECONDS, VacationDecision.class);
         assertTrue(decision.approved());
+        assertNotNull(decision.notificationMessage(), "notification activity should have produced a message");
 
         given().when().get("/")
                 .then().statusCode(200)

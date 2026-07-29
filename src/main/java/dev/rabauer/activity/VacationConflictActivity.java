@@ -6,6 +6,6 @@ import io.temporal.activity.ActivityInterface;
 import java.util.List;
 
 @ActivityInterface
-public interface VacationAiActivity {
-    String summarize(VacationRequest request, List<String> conflicts);
+public interface VacationConflictActivity {
+    List<String> findOverlaps(VacationRequest request);
 }

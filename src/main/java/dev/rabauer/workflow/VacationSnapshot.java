@@ -1,4 +1,6 @@
 package dev.rabauer.workflow;
 
-public record VacationSnapshot(VacationRequest request, String aiSummary) {
+import java.util.List;
+
+public record VacationSnapshot(VacationRequest request, List<String> conflicts, String aiSummary) {
 }

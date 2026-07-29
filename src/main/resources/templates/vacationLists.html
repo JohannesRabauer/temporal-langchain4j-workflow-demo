@@ -7,6 +7,16 @@
             <h3>{item.request.employeeName}</h3>
             <p class="meta">{item.request.startDate} &rarr; {item.request.endDate}</p>
             <p>{item.request.reason}</p>
+            {#if !item.conflicts.isEmpty}
+                <div class="conflicts">
+                    ⚠️ Possible conflicts:
+                    <ul>
+                        {#for c in item.conflicts}
+                            <li>{c}</li>
+                        {/for}
+                    </ul>
+                </div>
+            {/if}
             {#if item.aiSummary}
                 <p class="ai-summary">🤖 {item.aiSummary}</p>
             {#else}
@@ -34,6 +44,7 @@
             <p>{item.request.reason}</p>
             <p class="ai-summary">🤖 {item.decision.aiSummary}</p>
             {#if item.decision.comment}<p><strong>Manager comment:</strong> {item.decision.comment}</p>{/if}
+            {#if item.decision.notificationMessage}<p class="notification">✉️ {item.decision.notificationMessage}</p>{/if}
         </div>
     {/for}
 {/if}

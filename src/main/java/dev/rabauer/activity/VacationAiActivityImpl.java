@@ -6,6 +6,8 @@ import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
+import java.util.List;
+
 @Singleton
 public class VacationAiActivityImpl implements VacationAiActivity {
 
@@ -14,11 +16,13 @@ public class VacationAiActivityImpl implements VacationAiActivity {
 
     @Override
     @ActivateRequestContext
-    public String summarize(VacationRequest request) {
+    public String summarize(VacationRequest request, List<String> conflicts) {
+        String conflictText = conflicts.isEmpty() ? "None" : String.join("; ", conflicts);
         return advisor.review(
                 request.employeeName(),
                 request.startDate().toString(),
                 request.endDate().toString(),
-                request.reason());
+                request.reason(),
+                conflictText);
     }
 }

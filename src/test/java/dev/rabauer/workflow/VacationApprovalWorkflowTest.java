@@ -1,6 +1,8 @@
 package dev.rabauer.workflow;
 
 import dev.rabauer.activity.VacationAiActivity;
+import dev.rabauer.activity.VacationConflictActivity;
+import dev.rabauer.activity.VacationNotificationActivity;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
 import io.temporal.testing.TestWorkflowEnvironment;
@@ -11,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import static org.awaitility.Awaitility.await;
@@ -27,6 +30,7 @@ class VacationApprovalWorkflowTest {
 
     private static final String TASK_QUEUE = "test-vacation-approval";
     private static final String CANNED_SUMMARY = "Looks reasonable; recommend approval.";
+    private static final String CANNED_NOTIFICATION = "Notification sent.";
 
     private TestWorkflowEnvironment testEnv;
     private WorkflowClient client;
@@ -36,7 +40,10 @@ class VacationApprovalWorkflowTest {
         testEnv = TestWorkflowEnvironment.newInstance();
         Worker worker = testEnv.newWorker(TASK_QUEUE);
         worker.registerWorkflowImplementationTypes(VacationApprovalWorkflowImpl.class);
-        worker.registerActivitiesImplementations((VacationAiActivity) request -> CANNED_SUMMARY);
+        worker.registerActivitiesImplementations(
+                (VacationConflictActivity) request -> List.of(),
+                (VacationAiActivity) (request, conflicts) -> CANNED_SUMMARY,
+                (VacationNotificationActivity) (request, decision) -> CANNED_NOTIFICATION);
         testEnv.start();
         client = testEnv.getWorkflowClient();
     }
@@ -68,6 +75,7 @@ class VacationApprovalWorkflowTest {
         assertTrue(decision.approved());
         assertEquals("Enjoy!", decision.comment());
         assertEquals(CANNED_SUMMARY, decision.aiSummary());
+        assertEquals(CANNED_NOTIFICATION, decision.notificationMessage());
     }
 
     @Test
@@ -92,6 +100,7 @@ class VacationApprovalWorkflowTest {
             VacationSnapshot snapshot = workflow.getSnapshot();
             assertNotNull(snapshot.aiSummary());
             assertEquals(request, snapshot.request());
+            assertTrue(snapshot.conflicts().isEmpty());
         });
 
         workflow.decide(new ApprovalDecision(true, null));
