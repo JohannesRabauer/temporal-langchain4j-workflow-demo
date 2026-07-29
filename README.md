@@ -1,30 +1,34 @@
 # LangChain4j Meets Temporal — Vacation Approval Demo
 
-Reference implementation for a live-coding session building a vacation approval system with
+Starting point for a live-coding session building a vacation approval system with
 [LangChain4j](https://docs.langchain4j.dev/), [Temporal](https://temporal.io/), and
 [Quarkus](https://quarkus.io/) + [Qute](https://quarkus.io/guides/qute).
 
 [![Watch the live session on YouTube](https://img.youtube.com/vi/saM_XnON5cA/maxresdefault.jpg)](https://youtube.com/live/saM_XnON5cA)
 
 Docker Compose brings up a Temporal server, its Postgres persistence store, the Temporal Web
-UI, and a GPU-accelerated Ollama instance for LangChain4j. The Quarkus app connects to all of
-it and runs a full vacation-approval workflow:
+UI, and a GPU-accelerated Ollama instance for LangChain4j — all ready to go. The Quarkus app
+itself, though, doesn't use Temporal yet. It already runs a full vacation-approval process,
+just as plain, in-memory Java:
 
-- A deterministic **conflict check** scans other pending/approved requests for overlapping
-  dates before anything else runs, so the AI step reasons about real data instead of guessing.
+- A **conflict check** scans other pending/approved requests for overlapping dates before
+  anything else runs, so the AI step reasons about real data instead of guessing.
 - An **AI recommendation** step summarizes the request and recommends approve/deny, grounded
   in those conflicts.
-- The workflow then waits for a manager's decision via a Temporal **Signal**.
+- The request then sits in memory waiting for a manager's decision.
 - Once decided, an **AI notification** step drafts a short message to the employee explaining
   the outcome.
-- Restarting the app mid-workflow (`docker compose restart app`) demonstrates that Temporal
-  resumes exactly where it left off, with no state lost.
+
+That "sits in memory" part is the catch: restart the app while a request is pending, and it's
+gone — no retry, no recovery, nothing left to show the manager. **That's the live session**:
+turning this into a durable Temporal workflow, so the exact same steps survive a crash, wait
+for a signal instead of blocking in memory, and retry the AI calls on failure.
 
 ## Architecture
 
 Everything below runs as separate containers on one Docker network. The app is the only piece
-that talks to both Temporal (to run the workflow) and Ollama (to get AI text) — nothing else
-needs to know they exist.
+that talks to both Temporal and Ollama (to get AI text) — nothing else needs to know they
+exist.
 
 ```mermaid
 flowchart TB
@@ -42,7 +46,7 @@ flowchart TB
     Browser -->|"submit / approve / reject"| App
     Browser -.->|"optional: inspect workflows"| UI
 
-    App -->|"start workflow, send decision,<br/>read current status"| Temporal
+    App -.->|"connects at startup,<br/>currently idle"| Temporal
     App -->|"ask for a summary or a message"| Ollama
 
     Temporal -->|"store every workflow step"| Postgres
@@ -52,53 +56,65 @@ flowchart TB
 
 A few things worth noting:
 
-- The **app never stores any vacation data itself** — every request, decision, and AI reply
-  lives inside Temporal's own state (backed by Postgres). If the app container disappears and
-  comes back, nothing is lost; see the note about crash recovery below.
+- **Temporal is running but not doing anything yet.** The app connects to it at startup (the
+  `quarkus-temporal` extension does this even with zero workflows registered), but nothing is
+  wired up to actually use it — that connection is what the live session builds on.
+- The **app keeps all vacation data in its own memory**, not in Temporal or Postgres. Restart
+  the app container and every pending request disappears — see the next section.
 - **Ollama and Temporal don't know about each other.** Only the app talks to both, so it's the
-  one place that connects "an AI reply" to "a step in a workflow".
-- `temporal-ui` and `temporal-admin-tools` are purely observability/debugging aids — you could
-  delete both and the app would work exactly the same.
+  one place that connects "an AI reply" to a step in the process.
+- `temporal-ui` and `temporal-admin-tools` are purely observability/debugging aids for once
+  Temporal is wired in — you could delete both today and nothing would change.
 
-## How the vacation approval workflow works
+## How the vacation approval process works today
 
-A "workflow" here just means: a series of steps that Temporal remembers the progress of, even
-across restarts. Submitting a request kicks one off, and it doesn't finish until a manager has
-made a decision — which might be seconds or days later.
+Submitting a request kicks off a few steps, and the interesting one is in the middle: the
+request just sits there, in memory, until a manager makes a decision — which might be seconds
+or days later.
 
 ```mermaid
 sequenceDiagram
     actor Manager
     participant App as Web app
-    participant Workflow as Vacation approval workflow
+    participant Service as Vacation approval logic<br/>(plain Java, in-memory)
     participant AI as AI (Ollama)
 
     Manager->>App: Submit vacation request
-    App->>Workflow: Start workflow
-    activate Workflow
+    App->>Service: Handle submission
+    activate Service
 
-    Workflow->>Workflow: Check other requests for overlapping dates
-    Workflow->>AI: Ask for a summary & recommendation
-    AI-->>Workflow: Summary + recommendation
+    Service->>Service: Check other requests for overlapping dates
+    Service->>AI: Ask for a summary & recommendation
+    AI-->>Service: Summary + recommendation
 
-    Note over Workflow: Waits here — seconds or days —<br/>until a decision is made.<br/>Even an app restart at this point<br/>doesn't lose this progress.
+    Service-->>App: Stored as pending, in memory only
+    deactivate Service
+
+    Note over Service: Sits here — seconds or days —<br/>until a decision is made.<br/>If the app restarts now,<br/>this request is simply gone.
 
     Manager->>App: Approve or reject
-    App->>Workflow: Deliver the decision (signal)
+    App->>Service: Handle decision
+    activate Service
 
-    Workflow->>AI: Ask for a message to the employee
-    AI-->>Workflow: Notification text
+    Service->>AI: Ask for a message to the employee
+    AI-->>Service: Notification text
 
-    Workflow-->>App: Workflow finished
-    deactivate Workflow
+    Service-->>App: Moved to decided
+    deactivate Service
     App-->>Manager: Shows the updated status
 ```
 
-The middle "waits here" step is the whole point of using Temporal: an ordinary web request
-can't just sit open for days waiting for someone to click a button, but a Temporal workflow
-can — because its progress is durably recorded on the server, not held in the app's memory.
-That's also why `docker compose restart app` mid-demo is safe: the app comes back, reconnects,
-and every workflow that was waiting simply keeps waiting, exactly where it left off.
+That middle note is the whole reason this session exists. An ordinary web request can't stay
+open for days waiting for a click, so today's version stores the pending request in a plain
+Java map instead — which works fine right up until the process restarts, redeploys, or
+crashes, at which point that map (and every request in it) is gone. Try it yourself: submit a
+request, leave it pending, then restart the app and reload the page.
+
+Temporal exists to fix exactly this: it durably records a workflow's progress on the server, so
+a step like "wait for a manager's decision" can safely take days and survive restarts, retries,
+and deploys without an in-memory map anywhere. Converting the vacation approval logic into a
+Temporal workflow — with the AI and conflict-check steps as activities, and the decision
+delivered as a signal instead of a direct method call — is what we build live.
 
 ## Prerequisites
 
@@ -139,8 +155,8 @@ URLs:
 - Temporal Web UI: <http://localhost:8080>
 - Ollama API: <http://localhost:11434>
 
-To demonstrate workflow recovery, restart just the app container and watch Temporal resume
-whichever workflows were mid-flight:
+To see today's fragility for yourself: submit a request, leave it pending, then restart just
+the app container and reload the page — the request is gone.
 
 ```bash
 docker compose restart app
@@ -170,10 +186,8 @@ per-token cost while streaming. To use OpenAI instead, swap the
 
 ## Project layout
 
-- `workflow/` — `VacationApprovalWorkflow`: conflict check → AI summary → wait for signal →
-  AI notification
-- `activity/` — `VacationConflictActivity` (deterministic), `VacationAiActivity` and
-  `VacationNotificationActivity` (LangChain4j-backed)
+- `workflow/` — the vacation approval process: plain domain records plus `VacationService`,
+  today's in-memory (not yet Temporal) orchestrator
 - `ai/` — the two LangChain4j AI services: `VacationAdvisor` (manager-facing recommendation)
   and `VacationNotifier` (employee-facing message)
 - `web/` — REST resources and Qute-rendered pages, including the auto-refreshing pending/decided lists

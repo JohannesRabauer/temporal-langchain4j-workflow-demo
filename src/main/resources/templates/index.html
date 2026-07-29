@@ -1,5 +1,52 @@
 {#include layout}
     {#title}Vacation Approval{/title}
     <h1>Vacation Approval</h1>
-    <p class="subtitle">Built live on stream &mdash; nothing to see here yet.</p>
+    <p class="subtitle">Submit a request, let AI draft a recommendation, and approve or reject it.</p>
+
+    <h2>New request</h2>
+    <form class="request-form" method="post" action="/vacations">
+        <div>
+            <label for="employeeName">Employee name</label><br>
+            <input id="employeeName" name="employeeName" type="text" required>
+        </div>
+        <div>
+            <label for="startDate">Start date</label><br>
+            <input id="startDate" name="startDate" type="date" required>
+        </div>
+        <div>
+            <label for="endDate">End date</label><br>
+            <input id="endDate" name="endDate" type="date" required>
+        </div>
+        <div>
+            <label for="reason">Reason</label><br>
+            <textarea id="reason" name="reason" rows="3" required></textarea>
+        </div>
+        <button type="submit">Submit request</button>
+    </form>
+
+    <div id="vacation-lists">
+        {#include vacationLists /}
+    </div>
+
+    <script>
+        (function () {
+            const container = document.getElementById('vacation-lists');
+
+            async function refresh() {
+                if (container.contains(document.activeElement)) {
+                    return; // don't clobber a comment the manager is currently typing
+                }
+                try {
+                    const response = await fetch('/vacations/fragment');
+                    if (response.ok) {
+                        container.innerHTML = await response.text();
+                    }
+                } catch (e) {
+                    // transient network hiccup, just try again on the next tick
+                }
+            }
+
+            setInterval(refresh, 3000);
+        })();
+    </script>
 {/include}

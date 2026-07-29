@@ -1,0 +1,50 @@
+<h2>Pending approval</h2>
+{#if pending.isEmpty}
+    <p class="empty">No requests waiting for a decision.</p>
+{#else}
+    {#for item in pending}
+        <div class="card">
+            <h3>{item.request.employeeName}</h3>
+            <p class="meta">{item.request.startDate} &rarr; {item.request.endDate}</p>
+            <p>{item.request.reason}</p>
+            {#if !item.conflicts.isEmpty}
+                <div class="conflicts">
+                    ⚠️ Possible conflicts:
+                    <ul>
+                        {#for c in item.conflicts}
+                            <li>{c}</li>
+                        {/for}
+                    </ul>
+                </div>
+            {/if}
+            {#if item.aiSummary}
+                <p class="ai-summary">🤖 {item.aiSummary}</p>
+            {#else}
+                <p class="ai-summary empty">AI review in progress&hellip;</p>
+            {/if}
+            <form class="decision-form" method="post" action="/vacations/{item.requestId}/decide">
+                <input type="text" name="comment" placeholder="Comment (optional)">
+                <button class="approve" type="submit" name="approved" value="true">Approve</button>
+                <button class="reject" type="submit" name="approved" value="false">Reject</button>
+            </form>
+        </div>
+    {/for}
+{/if}
+
+<h2>Decided</h2>
+{#if decided.isEmpty}
+    <p class="empty">No decisions yet.</p>
+{#else}
+    {#for item in decided}
+        <div class="card">
+            <h3>{item.request.employeeName}
+                {#if item.decision.approved}<span class="approved">Approved</span>{#else}<span class="rejected">Rejected</span>{/if}
+            </h3>
+            <p class="meta">{item.request.startDate} &rarr; {item.request.endDate}</p>
+            <p>{item.request.reason}</p>
+            <p class="ai-summary">🤖 {item.decision.aiSummary}</p>
+            {#if item.decision.comment}<p><strong>Manager comment:</strong> {item.decision.comment}</p>{/if}
+            {#if item.decision.notificationMessage}<p class="notification">✉️ {item.decision.notificationMessage}</p>{/if}
+        </div>
+    {/for}
+{/if}

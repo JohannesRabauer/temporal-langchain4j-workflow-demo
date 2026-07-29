@@ -43,3 +43,7 @@ nb-configuration.xml
 /.quarkus/cli/plugins/
 # TLS Certificates
 .certs/
+
+# JVM crash dumps
+hs_err_pid*.log
+replay_pid*.log
