@@ -7,22 +7,22 @@ Starting point for a live-coding session building a vacation approval system wit
 [![Watch the live session on YouTube](https://img.youtube.com/vi/saM_XnON5cA/maxresdefault.jpg)](https://youtube.com/live/saM_XnON5cA)
 
 Docker Compose brings up a Temporal server, its Postgres persistence store, the Temporal Web
-UI, and a GPU-accelerated Ollama instance for LangChain4j — all ready to go. The Quarkus app
-itself, though, doesn't use Temporal yet. It already runs a full vacation-approval process,
-just as plain, in-memory Java:
+UI, and a GPU-accelerated Ollama instance for LangChain4j — all ready to go. The vacation
+approval process now runs as a durable `VacationApprovalWorkflow`:
 
-- A **conflict check** scans other pending/approved requests for overlapping dates before
-  anything else runs, so the AI step reasons about real data instead of guessing.
-- An **AI recommendation** step summarizes the request and recommends approve/deny, grounded
-  in those conflicts.
-- The request then sits in memory waiting for a manager's decision.
-- Once decided, an **AI notification** step drafts a short message to the employee explaining
-  the outcome.
+- A **conflict check** activity looks at other running/decided workflow executions (via the
+  Temporal Visibility API) for overlapping dates before anything else runs, so the AI step
+  reasons about real data instead of guessing.
+- An **AI recommendation** activity summarizes the request and recommends approve/deny,
+  grounded in those conflicts. Both AI activities retry automatically on failure.
+- The workflow then blocks on `Workflow.await(...)`, waiting for a `decide` **signal** from a
+  manager — this can safely take seconds or days, since Temporal durably records the wait.
+- Once decided, an **AI notification** activity drafts a short message to the employee
+  explaining the outcome, and the workflow completes.
 
-That "sits in memory" part is the catch: restart the app while a request is pending, and it's
-gone — no retry, no recovery, nothing left to show the manager. **That's the live session**:
-turning this into a durable Temporal workflow, so the exact same steps survive a crash, wait
-for a signal instead of blocking in memory, and retry the AI calls on failure.
+Because the pending state now lives in Temporal's own event history instead of a plain Java
+map, restarting the app (or the worker) while a request is pending no longer loses it: the
+workflow simply resumes waiting for its signal.
 
 ## Architecture
 
@@ -46,7 +46,7 @@ flowchart TB
     Browser -->|"submit / approve / reject"| App
     Browser -.->|"optional: inspect workflows"| UI
 
-    App -.->|"connects at startup,<br/>currently idle"| Temporal
+    App -->|"start workflow, signal decision,<br/>query state"| Temporal
     App -->|"ask for a summary or a message"| Ollama
 
     Temporal -->|"store every workflow step"| Postgres
@@ -56,65 +56,63 @@ flowchart TB
 
 A few things worth noting:
 
-- **Temporal is running but not doing anything yet.** The app connects to it at startup (the
-  `quarkus-temporal` extension does this even with zero workflows registered), but nothing is
-  wired up to actually use it — that connection is what the live session builds on.
-- The **app keeps all vacation data in its own memory**, not in Temporal or Postgres. Restart
-  the app container and every pending request disappears — see the next section.
-- **Ollama and Temporal don't know about each other.** Only the app talks to both, so it's the
-  one place that connects "an AI reply" to a step in the process.
-- `temporal-ui` and `temporal-admin-tools` are purely observability/debugging aids for once
-  Temporal is wired in — you could delete both today and nothing would change.
+- **Temporal now drives the whole approval process.** The app starts a
+  `VacationApprovalWorkflow` execution per request, signals it with the manager's decision, and
+  queries running/completed executions to render the pending/decided lists — no more in-memory
+  maps.
+- **Every pending request lives in Temporal/Postgres, not the app's own memory.** Restart the
+  app container and pending requests are unaffected — see the next section.
+- **Ollama and Temporal don't know about each other.** Only the app talks to both: the AI calls
+  run as Activities dispatched by the workflow, and only the app process actually calls Ollama.
+- `temporal-ui` and `temporal-admin-tools` are purely observability/debugging aids — open
+  <http://localhost:8080> to watch a `VacationApprovalWorkflow` execution progress step by step.
 
-## How the vacation approval process works today
+## How the vacation approval process works now
 
-Submitting a request kicks off a few steps, and the interesting one is in the middle: the
-request just sits there, in memory, until a manager makes a decision — which might be seconds
-or days later.
+Submitting a request starts a workflow execution, and the interesting part is in the middle:
+the workflow blocks on a signal until a manager makes a decision — which might be seconds or
+days later — without holding a web request open or keeping anything in the app's own memory.
 
 ```mermaid
 sequenceDiagram
     actor Manager
     participant App as Web app
-    participant Service as Vacation approval logic<br/>(plain Java, in-memory)
-    participant AI as AI (Ollama)
+    participant Temporal as VacationApprovalWorkflow<br/>(Temporal)
+    participant AI as AI (Ollama, via Activities)
 
     Manager->>App: Submit vacation request
-    App->>Service: Handle submission
-    activate Service
+    App->>Temporal: Start workflow
+    activate Temporal
 
-    Service->>Service: Check other requests for overlapping dates
-    Service->>AI: Ask for a summary & recommendation
-    AI-->>Service: Summary + recommendation
+    Temporal->>Temporal: Activity: check other executions for overlapping dates
+    Temporal->>AI: Activity: ask for a summary & recommendation
+    AI-->>Temporal: Summary + recommendation
 
-    Service-->>App: Stored as pending, in memory only
-    deactivate Service
-
-    Note over Service: Sits here — seconds or days —<br/>until a decision is made.<br/>If the app restarts now,<br/>this request is simply gone.
+    Temporal-->>App: Running — query returns pending state
+    Note over Temporal: Blocked on Workflow.await() —<br/>seconds or days — until the<br/>decide signal arrives. Survives<br/>worker/app restarts unaffected.
 
     Manager->>App: Approve or reject
-    App->>Service: Handle decision
-    activate Service
+    App->>Temporal: Signal: decide
 
-    Service->>AI: Ask for a message to the employee
-    AI-->>Service: Notification text
+    Temporal->>AI: Activity: ask for a message to the employee
+    AI-->>Temporal: Notification text
 
-    Service-->>App: Moved to decided
-    deactivate Service
+    Temporal-->>App: Completed — query/result returns decided state
+    deactivate Temporal
     App-->>Manager: Shows the updated status
 ```
 
-That middle note is the whole reason this session exists. An ordinary web request can't stay
-open for days waiting for a click, so today's version stores the pending request in a plain
-Java map instead — which works fine right up until the process restarts, redeploys, or
-crashes, at which point that map (and every request in it) is gone. Try it yourself: submit a
-request, leave it pending, then restart the app and reload the page.
+That "blocked on `Workflow.await()`" note is the whole point: an ordinary web request can't
+stay open for days waiting for a click, and a plain in-memory map disappears the moment the
+process restarts, redeploys, or crashes. A Temporal workflow instead durably records its
+progress in the server's event history, so "wait for a manager's decision" can safely take days
+and survive restarts, retries, and deploys without an in-memory map anywhere. Try it yourself:
+submit a request, leave it pending, then restart the app and reload the page — it's still
+there.
 
-Temporal exists to fix exactly this: it durably records a workflow's progress on the server, so
-a step like "wait for a manager's decision" can safely take days and survive restarts, retries,
-and deploys without an in-memory map anywhere. Converting the vacation approval logic into a
-Temporal workflow — with the AI and conflict-check steps as activities, and the decision
-delivered as a signal instead of a direct method call — is what we build live.
+The conflict-check and both AI calls run as Activities (`VacationActivities`), each retried
+automatically by Temporal on failure; the decision is delivered as a `@SignalMethod` instead of
+a direct method call.
 
 ## Prerequisites
 
@@ -155,8 +153,8 @@ URLs:
 - Temporal Web UI: <http://localhost:8080>
 - Ollama API: <http://localhost:11434>
 
-To see today's fragility for yourself: submit a request, leave it pending, then restart just
-the app container and reload the page — the request is gone.
+To see the durability for yourself: submit a request, leave it pending, then restart just the
+app container and reload the page — the request is still there, still pending.
 
 ```bash
 docker compose restart app
@@ -186,8 +184,9 @@ per-token cost while streaming. To use OpenAI instead, swap the
 
 ## Project layout
 
-- `workflow/` — the vacation approval process: plain domain records plus `VacationService`,
-  today's in-memory (not yet Temporal) orchestrator
+- `workflow/` — the vacation approval process: domain records, the `VacationApprovalWorkflow`
+  (interface + implementation), the `VacationActivities` wrapping conflict-check/AI calls, and
+  `VacationService`, the thin `WorkflowClient`-based orchestrator the web layer talks to
 - `ai/` — the two LangChain4j AI services: `VacationAdvisor` (manager-facing recommendation)
   and `VacationNotifier` (employee-facing message)
 - `web/` — REST resources and Qute-rendered pages, including the auto-refreshing pending/decided lists
