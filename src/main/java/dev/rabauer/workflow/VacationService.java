@@ -33,6 +33,7 @@ public class VacationService {
                 WorkflowOptions.newBuilder()
                         .setWorkflowId(workflowId)
                         .setTaskQueue(VacationApprovalWorkflow.TASK_QUEUE)
+                        .setRetryOptions(RetryOptions.newBuilder().setMaximumAttempts(0).build())
                         .build());
 
         WorkflowClient.start(workflow::run, request);

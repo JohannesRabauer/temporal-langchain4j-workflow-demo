@@ -4,6 +4,7 @@ import dev.rabauer.ai.VacationAdvisor;
 import dev.rabauer.ai.VacationNotifier;
 import io.temporal.client.WorkflowClient;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.inject.Inject;
 
 import java.util.ArrayList;
@@ -48,6 +49,7 @@ public class VacationActivitiesImpl implements VacationActivities {
     }
 
     @Override
+    @ActivateRequestContext
     public String reviewRequest(VacationRequest request, List<String> conflicts) {
         String conflictText = conflicts.isEmpty() ? "None" : String.join("; ", conflicts);
         return advisor.review(
@@ -59,6 +61,7 @@ public class VacationActivitiesImpl implements VacationActivities {
     }
 
     @Override
+    @ActivateRequestContext
     public String draftNotification(VacationRequest request, ApprovalDecision decision) {
         String managerComment = decision.comment() == null || decision.comment().isBlank()
                 ? "None"
